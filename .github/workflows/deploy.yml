@@ -7,20 +7,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
@@ -33,13 +27,18 @@ jobs:
           curl -fsSL \
             "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" \
             -o /tmp/typst.tar.xz
+
           tar -xJf /tmp/typst.tar.xz -C /tmp
-          sudo install /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+
+          sudo install \
+            /tmp/typst-x86_64-unknown-linux-musl/typst \
+            /usr/local/bin/typst
 
       - name: Build HTML
         shell: bash
         run: |
           mkdir -p docs
+
           typst compile --features html --root src \
             src/index.typ docs/index.html
 
@@ -47,7 +46,9 @@ jobs:
             while IFS= read -r -d '' file; do
               relative="${file#src/}"
               output="docs/${relative%.typ}.html"
+
               mkdir -p "$(dirname "$output")"
+
               typst compile --features html --root src \
                 "$file" "$output"
             done < <(find src/posts -type f -name '*.typ' -print0)
@@ -57,14 +58,30 @@ jobs:
             cp -a static/. docs/
           fi
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages
           path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
 
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages
